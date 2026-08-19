@@ -13,7 +13,13 @@
 #
 # Show what is installed:   bash install-mac-reminders.sh status
 # Test a warning now:       bash install-mac-reminders.sh test
-# Remove everything:        bash install-mac-reminders.sh uninstall
+#
+# Cancel temporarily:       bash install-mac-reminders.sh disable
+# Switch back on:           bash install-mac-reminders.sh enable
+# Remove completely:        bash install-mac-reminders.sh uninstall
+#
+# Installing once is enough: the reminders live in ~/Library/LaunchAgents and
+# come back by themselves after every shutdown, reboot, and login.
 
 set -euo pipefail
 
@@ -59,6 +65,8 @@ remove_all () {
         [ -n "$label" ] || continue
         found=1
         launchctl bootout "gui/${UID_NUM}/${label}" 2>/dev/null || true
+        # Clear any leftover "disable" flag, or a later reinstall stays silent.
+        launchctl enable "gui/${UID_NUM}/${label}" 2>/dev/null || true
         rm -f "$AGENT_DIR/${label}.plist"
         echo "  removed: ${label}"
     done < <(installed_labels)
@@ -77,7 +85,16 @@ warning_command () {
 2. Quit anything mid-task (copies, exports, builds, updates)
 3. Shut down the Mac if it is a desktop without a UPS"
 
+    # POWERCUT_FORCE=1 skips the freshness check (used by "test").
+    # Without it, a warning that launchd held back while the Mac was off or
+    # asleep is dropped instead of popping up hours late for a cut that has
+    # already happened.
     cat <<CMD
+now=\$(( 10#\$(/bin/date +%H) * 60 + 10#\$(/bin/date +%M) ))
+left=\$(( ${event_min} - now ))
+if [ "\${POWERCUT_FORCE:-0}" != "1" ] && { [ "\$left" -lt -1 ] || [ "\$left" -gt $(( LEAD + 3 )) ]; }; then
+    exit 0
+fi
 for i in 1 2 3; do /usr/bin/afplay /System/Library/Sounds/Sosumi.aiff; done &
 /usr/bin/osascript -e 'display alert "POWER CUT in ${LEAD} min (${clock})" message "${body}" as critical giving up after 120' >/dev/null 2>&1 || \
 /usr/bin/osascript -e 'display notification "${body}" with title "POWER CUT in ${LEAD} min (${clock})" sound name "Sosumi"'
@@ -139,7 +156,7 @@ TIMES=()
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        install|uninstall|status|test) ACTION="$1"; shift ;;
+        install|uninstall|status|test|disable|enable) ACTION="$1"; shift ;;
         --lead)
             [ $# -ge 2 ] || die "--lead needs a number of minutes"
             [[ "$2" =~ ^[0-9]+$ ]] && (( $2 >= 1 && $2 <= 120 )) || die "--lead must be 1-120 minutes"
@@ -151,6 +168,36 @@ while [ $# -gt 0 ]; do
 done
 
 case "$ACTION" in
+    disable)
+        # "launchctl disable" is remembered across reboots, so the reminders
+        # stay off until "enable" — the plists are left in place.
+        found=0
+        while read -r label; do
+            [ -n "$label" ] || continue
+            found=1
+            launchctl disable "gui/${UID_NUM}/${label}" 2>/dev/null || true
+            launchctl bootout "gui/${UID_NUM}/${label}" 2>/dev/null || true
+            echo "  paused: ${label}"
+        done < <(installed_labels)
+        if [ "$found" = 1 ]; then
+            echo "Reminders are off (including after a reboot)."
+            echo "Turn them back on with:  bash $0 enable"
+        else
+            echo "  nothing installed to pause"
+        fi
+        exit 0 ;;
+    enable)
+        found=0
+        while read -r label; do
+            [ -n "$label" ] || continue
+            found=1
+            launchctl enable "gui/${UID_NUM}/${label}" 2>/dev/null || true
+            launchctl bootout "gui/${UID_NUM}/${label}" 2>/dev/null || true
+            launchctl bootstrap "gui/${UID_NUM}" "$AGENT_DIR/${label}.plist"
+            echo "  resumed: ${label}"
+        done < <(installed_labels)
+        [ "$found" = 1 ] || echo "  nothing installed — run the installer first"
+        exit 0 ;;
     uninstall)
         echo "Removing power-cut reminders..."
         remove_all
@@ -164,7 +211,13 @@ case "$ACTION" in
             plist="$AGENT_DIR/${label}.plist"
             h=$(/usr/libexec/PlistBuddy -c "Print :StartCalendarInterval:0:Hour" "$plist" 2>/dev/null || echo "?")
             m=$(/usr/libexec/PlistBuddy -c "Print :StartCalendarInterval:0:Minute" "$plist" 2>/dev/null || echo "?")
-            state=$(launchctl print "gui/${UID_NUM}/${label}" >/dev/null 2>&1 && echo loaded || echo "NOT loaded")
+            if launchctl print-disabled "gui/${UID_NUM}" 2>/dev/null | grep -q "\"${label}\" => \(disabled\|true\)"; then
+                state="PAUSED"
+            elif launchctl print "gui/${UID_NUM}/${label}" >/dev/null 2>&1; then
+                state="active"
+            else
+                state="NOT loaded"
+            fi
             printf '  %-24s warns %02d:%02d Mon-Fri  (%s)\n' "$label" "$h" "$m" "$state"
         done < <(installed_labels)
         [ "$found" = 1 ] || echo "  no reminders installed"
@@ -178,7 +231,7 @@ for t in "${TIMES[@]}"; do MINUTES+=("$(to_minutes "$t")"); done
 
 if [ "$ACTION" = "test" ]; then
     echo "Showing a test warning for the ${TIMES[0]} event..."
-    bash -c "$(warning_command "${MINUTES[0]}")"
+    POWERCUT_FORCE=1 bash -c "$(warning_command "${MINUTES[0]}")"
     exit 0
 fi
 
@@ -195,3 +248,8 @@ echo
 echo "Test the pop-up right now with:"
 echo "  bash $0 test ${TIMES[0]}"
 echo "The first time, macOS may ask permission for the alert — click Allow."
+echo
+echo "This is a one-time setup: the reminders survive shutdowns and reboots."
+echo "  pause:   bash $0 disable"
+echo "  resume:  bash $0 enable"
+echo "  remove:  bash $0 uninstall"

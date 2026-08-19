@@ -19,7 +19,20 @@
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File power-reminder.ps1 -Status
     powershell -ExecutionPolicy Bypass -File power-reminder.ps1 -Test
+
+.EXAMPLE
+    # Cancel temporarily, then switch back on
+    powershell -ExecutionPolicy Bypass -File power-reminder.ps1 -Disable
+    powershell -ExecutionPolicy Bypass -File power-reminder.ps1 -Enable
+
+.EXAMPLE
+    # Remove completely
     powershell -ExecutionPolicy Bypass -File power-reminder.ps1 -Uninstall
+
+.NOTES
+    Installing once is enough. Scheduled Tasks are stored by Windows itself, so
+    the reminders come back after every shutdown, reboot, and login until you
+    disable or uninstall them.
 #>
 
 [CmdletBinding(DefaultParameterSetName = 'Show')]
@@ -28,6 +41,8 @@ param(
     [Parameter(ParameterSetName = 'Uninstall')][switch] $Uninstall,
     [Parameter(ParameterSetName = 'Status')]   [switch] $Status,
     [Parameter(ParameterSetName = 'Test')]     [switch] $Test,
+    [Parameter(ParameterSetName = 'Disable')]  [switch] $Disable,
+    [Parameter(ParameterSetName = 'Enable')]   [switch] $Enable,
 
     # Real power-event times, 24-hour HH:MM. Any number of them.
     [Parameter(ParameterSetName = 'Install')]
@@ -77,7 +92,22 @@ function Format-Clock {
 # ---------------------------------------------------------------- the warning
 
 function Show-Warning {
-    param([Parameter(Mandatory)][datetime] $EventTime, [int] $LeadMinutes)
+    param(
+        [Parameter(Mandatory)][datetime] $EventTime,
+        [int] $LeadMinutes,
+        # -Force shows the warning regardless of the clock (used by -Test).
+        [switch] $Force
+    )
+
+    # A task Windows held back while the PC was off or asleep must not pop up
+    # hours late for a cut that has already happened.
+    if (-not $Force) {
+        $minutesLeft = [int][math]::Round(($EventTime - (Get-Date)).TotalMinutes)
+        if ($minutesLeft -lt -1 -or $minutesLeft -gt ($LeadMinutes + 3)) {
+            Write-Verbose "Skipped: $minutesLeft min from the $(Format-Clock $EventTime) event."
+            return
+        }
+    }
 
     $clock = Format-Clock $EventTime
     $body  = @"
@@ -163,8 +193,11 @@ function Install-Reminders {
                        -At $warnAt
         # Interactive: the pop-up must appear on the logged-on user's desktop.
         $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive
+        # No -StartWhenAvailable: a missed warning is stale, not useful. The
+        # task itself double-checks the clock anyway.
         $settings  = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries `
-                       -DontStopIfGoingOnBatteries -StartWhenAvailable `
+                       -DontStopIfGoingOnBatteries `
+                       -MultipleInstances IgnoreNew `
                        -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
 
         Register-ScheduledTask -TaskName $taskName -TaskPath $TaskFolder `
@@ -187,6 +220,36 @@ switch ($PSCmdlet.ParameterSetName) {
         Write-Host ''
         Write-Host 'Test the pop-up right now with:'
         Write-Host ("  powershell -ExecutionPolicy Bypass -File `"{0}`" -Test" -f $PSCommandPath)
+        Write-Host ''
+        Write-Host 'This is a one-time setup: the reminders survive shutdowns and reboots.'
+        Write-Host '  pause:   -Disable      resume:  -Enable      remove:  -Uninstall'
+    }
+
+    'Disable' {
+        # Disabled tasks stay registered and stay disabled across reboots.
+        $tasks = @(Get-PowerCutTasks)
+        if ($tasks.Count -eq 0) {
+            Write-Host '  nothing installed to pause'
+        } else {
+            foreach ($t in $tasks) {
+                Disable-ScheduledTask -TaskName $t.TaskName -TaskPath $t.TaskPath | Out-Null
+                Write-Host "  paused: $($t.TaskName)"
+            }
+            Write-Host 'Reminders are off (including after a reboot).'
+            Write-Host ("Turn them back on with:  powershell -ExecutionPolicy Bypass -File `"{0}`" -Enable" -f $PSCommandPath)
+        }
+    }
+
+    'Enable' {
+        $tasks = @(Get-PowerCutTasks)
+        if ($tasks.Count -eq 0) {
+            Write-Host '  nothing installed - run -Install first'
+        } else {
+            foreach ($t in $tasks) {
+                Enable-ScheduledTask -TaskName $t.TaskName -TaskPath $t.TaskPath | Out-Null
+                Write-Host "  resumed: $($t.TaskName)"
+            }
+        }
     }
 
     'Uninstall' {
@@ -203,7 +266,8 @@ switch ($PSCmdlet.ParameterSetName) {
         } else {
             foreach ($t in $tasks) {
                 $info = Get-ScheduledTaskInfo -TaskName $t.TaskName -TaskPath $t.TaskPath
-                Write-Host ("  {0,-18} state {1,-8} next run {2}" -f $t.TaskName, $t.State, $info.NextRunTime)
+                $state = if ($t.State -eq 'Disabled') { 'PAUSED' } else { "$($t.State)" }
+                Write-Host ("  {0,-18} {1,-8} next run {2}" -f $t.TaskName, $state, $info.NextRunTime)
             }
         }
     }
@@ -211,7 +275,7 @@ switch ($PSCmdlet.ParameterSetName) {
     'Test' {
         $evt = Parse-EventTime $Times[0]
         Write-Host "Showing a test warning for the $(Format-Clock $evt) event..."
-        Show-Warning -EventTime $evt -LeadMinutes $Lead
+        Show-Warning -EventTime $evt -LeadMinutes $Lead -Force
     }
 
     # No switch given: this is how the scheduled task invokes the script.
