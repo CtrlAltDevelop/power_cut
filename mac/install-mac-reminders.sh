@@ -112,10 +112,8 @@ make_agent () {
     local hour=$(( warn_min / 60 )) minute=$(( warn_min % 60 ))
     local cmd_xml; cmd_xml="$(warning_command "$event_min" | escape_xml)"
 
-    local cal=""
-    for wd in 1 2 3 4 5; do
-        cal+="        <dict><key>Weekday</key><integer>${wd}</integer><key>Hour</key><integer>${hour}</integer><key>Minute</key><integer>${minute}</integer></dict>"$'\n'
-    done
+    # No Weekday key: launchd then fires it every day of the week.
+    local cal="        <dict><key>Hour</key><integer>${hour}</integer><key>Minute</key><integer>${minute}</integer></dict>"$'\n'
 
     cat > "$plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -143,7 +141,7 @@ PLIST
 
     launchctl bootout "gui/${UID_NUM}/${label}" 2>/dev/null || true
     launchctl bootstrap "gui/${UID_NUM}" "$plist"
-    printf '  installed: %-24s warns at %s for the %s event (Mon-Fri)\n' \
+    printf '  installed: %-24s warns at %s for the %s event (every day)\n' \
         "$label" "$(to_clock "$warn_min")" "$(to_clock "$event_min")"
 }
 
@@ -218,7 +216,7 @@ case "$ACTION" in
             else
                 state="NOT loaded"
             fi
-            printf '  %-24s warns %02d:%02d Mon-Fri  (%s)\n' "$label" "$h" "$m" "$state"
+            printf '  %-24s warns %02d:%02d every day  (%s)\n' "$label" "$h" "$m" "$state"
         done < <(installed_labels)
         [ "$found" = 1 ] || echo "  no reminders installed"
         exit 0 ;;

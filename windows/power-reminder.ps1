@@ -188,9 +188,7 @@ function Install-Reminders {
                     $scriptPath, $evt.ToString('HH:mm'), $LeadMinutes
 
         $action  = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $argument
-        $trigger = New-ScheduledTaskTrigger -Weekly `
-                       -DaysOfWeek Monday, Tuesday, Wednesday, Thursday, Friday `
-                       -At $warnAt
+        $trigger = New-ScheduledTaskTrigger -Daily -At $warnAt
         # Interactive: the pop-up must appear on the logged-on user's desktop.
         $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive
         # No -StartWhenAvailable: a missed warning is stale, not useful. The
@@ -204,7 +202,7 @@ function Install-Reminders {
             -Action $action -Trigger $trigger -Principal $principal `
             -Settings $settings -Force | Out-Null
 
-        Write-Host ("  installed: {0,-18} warns at {1} for the {2} event (Mon-Fri)" -f
+        Write-Host ("  installed: {0,-18} warns at {1} for the {2} event (every day)" -f
                     $taskName, (Format-Clock $warnAt), (Format-Clock $evt))
     }
 }

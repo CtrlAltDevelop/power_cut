@@ -1,10 +1,10 @@
-# Power Cut Pop-Up Warning — Setup Guide (Level 2)
+# Power Cut Pop-Up Warning — Setup Guide
 
 An automatic, hard-to-ignore pop-up appears on your computer a few minutes
 before each scheduled power switch-over, so you can save and shut down in time.
 Uses only built-in tools — nothing to buy, nothing to install.
 
-**Office power schedule (Mon–Fri):**
+**Office power schedule (every day):**
 
 | Time | What happens | Gap without power |
 |---|---|---|
@@ -44,10 +44,10 @@ Two things it deliberately does **not** do:
 If you would rather not type commands, use the menu — it can set up, test,
 pause, resume, and remove everything:
 
-- **macOS:** double-click **`power-cut-menu.command`** in Finder
-  (keep it in the same folder as `install-mac-reminders.sh`)
-- **Windows:** double-click **`power-cut-menu.cmd`**
-  (keep it in the same folder as `power-reminder.ps1`)
+- **macOS:** double-click **`mac/power-cut-menu.command`** in Finder
+  (keep it in the same folder as `mac/install-mac-reminders.sh`)
+- **Windows:** double-click **`windows/power-cut-menu.cmd`**
+  (keep it in the same folder as `windows/power-reminder.ps1`)
 
 The menu shows the current status at the top, so you can always see whether the
 reminders are active, paused, or not installed.
@@ -59,9 +59,35 @@ The rest of this guide is the same thing done from the command line.
 
 ---
 
+## Quick test — no install needed
+
+To check that a pop-up can actually reach your screen before installing
+anything, run the command for your platform. It shows the same alert the
+reminders use, straight away.
+
+**macOS** — in **Terminal**:
+
+```bash
+osascript -e 'display alert "POWER CUT in 2 min (10:00)" message "Save your work now." as critical giving up after 120'
+```
+
+**Windows** — in **PowerShell**:
+
+```powershell
+powershell -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show('Save your work now.','!! POWER CUT in 2 min (10:00) !!','OK','Warning')"
+```
+
+Nothing appeared? See **Troubleshooting** at the end — on macOS the first run
+asks for notification permission.
+
+Once the reminders are installed, use `test` / `-Test` instead; those go through
+the real reminder script.
+
+---
+
 ## macOS
 
-1. Download `install-mac-reminders.sh`
+1. Download `mac/install-mac-reminders.sh`
 2. Open **Terminal** and run:
 
    ```bash
@@ -110,7 +136,7 @@ bash ~/Downloads/install-mac-reminders.sh uninstall
 
 ## Windows
 
-1. Copy `power-reminder.ps1` to `C:\Tools\power-reminder.ps1`
+1. Copy `windows/power-reminder.ps1` to `C:\Tools\power-reminder.ps1`
 2. Open **PowerShell** (a normal window is enough — no Administrator needed)
    and run:
 
@@ -168,7 +194,7 @@ them by hand.
 | Power event times | positional args, e.g. `10:00 12:00` | `-Times 10:00,12:00` |
 | Minutes of warning | `--lead 5` | `-Lead 5` |
 | Default | `10:00 12:00`, lead 2 | `10:00,12:00`, lead 2 |
-| Days | Mon–Fri | Mon–Fri |
+| Days | every day | every day |
 | Status | `status` | `-Status` |
 | Test pop-up | `test` | `-Test` |
 | Pause / resume | `disable` / `enable` | `-Disable` / `-Enable` |
