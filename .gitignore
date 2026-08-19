@@ -1,0 +1,22 @@
+# JetBrains IDEs (PyCharm, IntelliJ, ...)
+.idea/
+*.iml
+
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Editors
+.vscode/
+*.swp
+*~
+
+# Generated at install time — never belongs in the repo
+*.plist
