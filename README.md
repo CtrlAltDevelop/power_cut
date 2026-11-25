@@ -1,5 +1,10 @@
 # power_cut
 
+[![license: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+[![platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Windows-lightgrey)](#quick-start)
+[![shell](https://img.shields.io/badge/scripts-Bash%20%7C%20PowerShell-4EAA25)](#layout)
+[![last commit](https://img.shields.io/github/last-commit/CtrlAltDevelop/power_cut)](https://github.com/CtrlAltDevelop/power_cut/commits)
+
 A hard-to-ignore pop-up appears on your computer a few minutes before each
 scheduled power switch-over, so you can save your work and shut down in time.
 
@@ -64,4 +69,4 @@ Full instructions, your own times, pausing, and troubleshooting are in
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+AGPL-3.0-only — see [LICENSE](LICENSE).
